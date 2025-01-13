@@ -14,11 +14,21 @@ class Packet:
 packets = [Packet() for _ in range(MAX_NUM_PACKETS)]
 cost = [[[0] * (MAX_BATCH_SIZE + 1) for _ in range(NUM_TYPES + 1)] for _ in range(NUM_NODES + 1)]
 batchLimit = [[0] * (NUM_TYPES + 1) for _ in range(NUM_NODES + 1)]
-ids = [[] for _ in range(NUM_NODES + 1)]
+ids = [[[], [], [], []] for _ in range(NUM_NODES + 1)]
 c4, c6, cr = 0, 0, 0
 n, curTime, nout, queueTime = 0, 1, 0, 0
 
 nextNode = {
+    (1, 3): 2,
+    (2, 3): 9,
+    (9, 3): 10,
+    (10, 3): None,
+    (1, 2): 2,
+    (2, 2): 3,
+    (3, 2): 8,
+    (8, 2): 9,
+    (9, 2): 10,
+    (10, 2): None,
     (1, 1): 2,
     (2, 1): 3,
     (3, 1): 4,
@@ -28,31 +38,25 @@ nextNode = {
     (7, 1): 8,
     (8, 1): 9,
     (9, 1): 10,
-    (1, 2): 2,
-    (2, 2): 3,
-    (3, 2): 8,
-    (8, 2): 9,
-    (9, 2): 10,
-    (1, 3): 2,
-    (2, 3): 9,
-    (9, 3): 10
+    (10, 1): None
 }
 
-def ReceivePackets(t):
+def ReceivePackets(x = 1):
     global curTime
-    curTime = t + cr
-    print(f"R {t}")
+    print(f"R {curTime}")
+    curTime = curTime + cr * x
     sys.stdout.flush()
     p = int(input())
     if p == -1:
         sys.exit(0)
-
     for _ in range(p):
         id, type, a = map(int, input().split())
         packets[id].type = type
         packets[id].arriveTime = a
         packets[id].t = curTime
-        ids[1].append(id)
+        ids[1][type].append(id)
+    # if p == 0:
+    #     ReceivePackets(x * 2)
 
 def ExecuteTask(nodeId, arr, t):
     global curTime, queueTime, nout
@@ -71,25 +75,39 @@ def ExecuteTask(nodeId, arr, t):
     for i in arr:
         packets[i].t = curTime
 
-    if (nodeId, type) in nextNode:
-        nextNodeId = nextNode[(nodeId, type)]
+    nextNodeId = nextNode[(nodeId, type)]
+    if nextNodeId:
         for i in arr:
-            ids[nextNodeId].append(i)
-
+            ids[nextNodeId][type].append(i)
     if nodeId == NUM_NODES:
         nout += b
         if nout == n:
             sys.exit(0)
-
     if nodeId == 4 or nodeId == 6:
         for i in arr:
             packets[i].t = max(curTime, queueTime) + (c4 if nodeId == 4 else c6)
             queueTime = packets[i].t
 
-def TakeSinglePacket(i):
-    arr = [ids[i][0]]
-    ids[i].pop(0)
+def ProcessNode(i, type):
+    batch = []
+    j = 0
+    for p_id in ids[i][type]:
+        if packets[p_id].t > curTime:
+            break
+        batch.append((p_id, j))
+        j += 1
+        if batchLimit[i][type] == len(batch):
+            break
+    if not batch:
+        return False
+    arr = []
+    d = 0
+    for p_id, j in batch:
+        arr.append(p_id)
+        del ids[i][type][j - d]
+        d += 1
     ExecuteTask(i, arr, curTime)
+    return True
 
 def main():
     global c4, c6, cr, n
@@ -105,13 +123,19 @@ def main():
 
     while True:
         any_packet = False
-        for i in range(1, NUM_NODES + 1):
-            if ids[i] and packets[ids[i][0]].t <= curTime:
+        for i, j in nextNode.keys():
+            while ProcessNode(i, j):
                 any_packet = True
-                TakeSinglePacket(i)
         if any_packet:
             continue
-        ReceivePackets(curTime)
+        ReceivePackets()
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        import traceback
+        f = open('error.txt', 'w')
+        f.write(traceback.format_exc())
+        f.close()
+
